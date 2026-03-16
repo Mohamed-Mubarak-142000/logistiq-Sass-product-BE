@@ -2,10 +2,13 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export enum UserRole {
     SUPER_ADMIN = 'SUPER_ADMIN',
+    ADMIN = 'ADMIN',
+    WAREHOUSE = 'WAREHOUSE',
+    DRIVER = 'DRIVER',
+    STORE = 'STORE',
     COMPANY_ADMIN = 'COMPANY_ADMIN',
     WAREHOUSE_OWNER = 'WAREHOUSE_OWNER',
     WAREHOUSE_MANAGER = 'WAREHOUSE_MANAGER',
-    DRIVER = 'DRIVER',
     SHOP_OWNER = 'SHOP_OWNER',
     SUPERMARKET_OWNER = 'SUPERMARKET_OWNER',
 }
@@ -21,6 +24,8 @@ export interface IUser extends Document {
         lng: number;
         address?: string;
     };
+    phone?: string;
+    nationalId?: string;
     mustResetPassword: boolean; // Flag to force password reset on first login
     warehouseId?: mongoose.Types.ObjectId;
     vehicleId?: mongoose.Types.ObjectId;
@@ -47,6 +52,8 @@ const UserSchema: Schema = new Schema(
             lng: { type: Number },
             address: { type: String },
         },
+        phone: { type: String },
+        nationalId: { type: String },
         mustResetPassword: { type: Boolean, default: false },
         isActive: { type: Boolean, default: true },
     },

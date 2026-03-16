@@ -4,14 +4,16 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
 import tenantRoutes from './routes/tenantRoutes';
 import productRoutes from './routes/productRoutes';
+import categoryRoutes from './routes/categoryRoutes';
 import warehouseRoutes from './routes/warehouseRoutes';
 import storeRoutes from './routes/storeRoutes';
+import companyRoutes from './routes/companyRoutes';
 import vehicleRoutes from './routes/vehicleRoutes';
 import orderRoutes from './routes/orderRoutes';
-import inventoryMovementRoutes from './routes/inventoryMovementRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import reportRoutes from './routes/reportRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
+import workerRoutes from './routes/workerRoutes';
 
 dotenv.config();
 
@@ -25,14 +27,17 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/stores', storeRoutes);
+app.use('/api/companies', companyRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/inventory', inventoryMovementRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/workers', workerRoutes);
+app.use('/api/driver', workerRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

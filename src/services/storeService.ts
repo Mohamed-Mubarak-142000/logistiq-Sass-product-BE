@@ -1,16 +1,77 @@
 import { storeRepository } from '../repositories/storeRepository';
+import User, { UserRole } from '../models/User';
+import bcrypt from 'bcryptjs';
+import { sendWelcomeEmail } from '../utils/emailService';
 
 export const createStore = async (data: any, tenantId: string) => {
-    return await storeRepository.create({ ...data, tenantId });
+    const { 
+        name, 
+        ownerName, 
+        phone, 
+        address, 
+        lat, 
+        lng, 
+        creditLimit, 
+        paymentType, 
+        warehouseId,
+        email,
+        password = Math.floor(100000 + Math.random() * 900000).toString(),
+        isActive = true
+    } = data;
+
+    // 1. Create the store
+    const store = await storeRepository.create({ 
+        name, 
+        ownerName, 
+        phone, 
+        address, 
+        lat, 
+        lng, 
+        creditLimit, 
+        paymentType, 
+        warehouseId,
+        tenantId, 
+        isActive 
+    });
+
+    // 2. Create the Shop Owner user
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = await User.create({
+        name: ownerName,
+        email,
+        password: hashedPassword,
+        role: UserRole.SHOP_OWNER,
+        tenantId,
+        location: { lat, lng, address },
+        mustResetPassword: true,
+        isActive: true
+    });
+
+    // 3. Send email
+    await sendWelcomeEmail(email, password, ownerName);
+
+    return {
+        store,
+        user: {
+            id: user._id,
+            name: user.name,
+            email: user.email
+        }
+    };
 };
 
-export const getStores = async (tenantId: string, options: any, search = '') => {
-    let query: any = { tenantId, isActive: true };
+export const getStores = async (tenantId: string, options: any, search = '', filters: any = {}) => {
+    let query: any = { tenantId, ...filters };
     if (search) {
         query.$or = [
             { name: { $regex: search, $options: 'i' } },
             { ownerName: { $regex: search, $options: 'i' } }
         ];
+    }
+    if (query.isActive === undefined) {
+        query.isActive = true;
     }
     const stores = await storeRepository.find(query, options);
     const total = await storeRepository.count(query);

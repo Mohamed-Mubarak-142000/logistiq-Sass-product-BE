@@ -7,9 +7,17 @@ import { UserRole } from '../models/User';
 const router = express.Router();
 
 router.use(auth);
-router.use(authorize([UserRole.SUPER_ADMIN]));
 
-router.get('/super-admin/summary', dashboardController.getSuperAdminSummary);
-router.get('/super-admin/charts', dashboardController.getSuperAdminCharts);
+// Super Admin Endpoints
+router.get('/super-admin/summary', authorize([UserRole.SUPER_ADMIN]), dashboardController.getSuperAdminSummary);
+router.get('/super-admin/charts', authorize([UserRole.SUPER_ADMIN]), dashboardController.getSuperAdminCharts);
+router.get('/super-admin/top-companies', authorize([UserRole.SUPER_ADMIN]), dashboardController.getTopCompanies);
+
+// Tenant Admin Endpoints
+router.get('/admin/stats', authorize([UserRole.COMPANY_ADMIN]), dashboardController.getTenantDashboardStats);
+router.get('/admin/top-warehouses', authorize([UserRole.COMPANY_ADMIN]), dashboardController.getTopWarehouses);
+
+// Warehouse Staff Endpoints
+router.get('/warehouse/stats', authorize([UserRole.COMPANY_ADMIN]), dashboardController.getWarehouseDashboardStats);
 
 export default router;

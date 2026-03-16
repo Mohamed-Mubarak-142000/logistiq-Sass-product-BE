@@ -7,6 +7,7 @@ export interface IStore extends Document {
     address: string;
     creditLimit: number;
     paymentType: 'cash' | 'credit';
+    warehouseId?: mongoose.Types.ObjectId;
     tenantId: mongoose.Types.ObjectId;
     isActive: boolean;
 }
@@ -20,6 +21,7 @@ const StoreSchema: Schema = new Schema({
     lng: { type: Number },
     creditLimit: { type: Number, default: 0 },
     paymentType: { type: String, enum: ['cash', 'credit'], default: 'cash' },
+    warehouseId: { type: Schema.Types.ObjectId, ref: 'Warehouse' },
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
     isActive: { type: Boolean, default: true },
 }, { timestamps: true });

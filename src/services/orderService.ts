@@ -1,19 +1,97 @@
 import { orderRepository } from '../repositories/orderRepository';
+import { OrderStatus } from '../models/Order';
+import mongoose from 'mongoose';
 
 export const createOrder = async (data: any, tenantId: string) => {
-    return await orderRepository.create({ ...data, tenantId });
+    // Basic validation could go here
+    return await orderRepository.create({ ...data, tenantId, status: OrderStatus.PENDING });
 };
 
-export const getOrders = async (tenantId: string, options: any, search = '') => {
-    let query: any = { tenantId };
+export const getOrders = async (tenantId: string | undefined, options: any, search = '', filters: any = {}) => {
+    let query: any = { ...filters };
+    if (tenantId) {
+        query.tenantId = tenantId;
+    }
     if (search) {
         query.$or = [
             { orderNumber: { $regex: search, $options: 'i' } },
         ];
     }
-    const orders = await orderRepository.find(query, options);
+    const { skip = 0, limit = 10, sort = { createdAt: -1 } } = options;
+    const orders = await orderRepository.model
+        .find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .populate('storeId', 'name ownerName phone')
+        .populate('warehouseId', 'name')
+        .populate('vehicleId', 'name plateNumber')
+        .populate('items.productId', 'name sku sellingPrice');
     const total = await orderRepository.count(query);
     return { orders, total };
+};
+
+export const assignOrderToDriver = async (orderId: string, driverId: string, vehicleId: string, tenantId: string) => {
+    const order = await orderRepository.findOne({ _id: orderId, tenantId });
+    if (!order) throw new Error('Order not found');
+    
+    return await orderRepository.update(orderId, {
+        driverId,
+        vehicleId,
+        status: OrderStatus.ASSIGNED
+    });
+};
+
+export const startTrip = async (driverId: string, tenantId: string) => {
+    // Validate driver has at least 3 assigned orders
+    const assignedOrders = await orderRepository.find({
+        driverId: new mongoose.Types.ObjectId(driverId),
+        tenantId: new mongoose.Types.ObjectId(tenantId),
+        status: OrderStatus.ASSIGNED
+    });
+
+    if (assignedOrders.length < 3) {
+        throw new Error('You must have at least 3 assigned orders to start a trip (Dispatch Validation Rule).');
+    }
+
+    // Update all assigned orders to IN_TRANSIT
+    const orderIds = assignedOrders.map(o => o._id);
+    await orderRepository.model.updateMany(
+        { _id: { $in: orderIds }, tenantId: new mongoose.Types.ObjectId(tenantId) },
+        { $set: { status: OrderStatus.IN_TRANSIT } }
+    );
+
+    return { success: true, count: orderIds.length };
+};
+
+export const deliverOrder = async (orderId: string, proof: { signatureUrl: string, photoUrl: string }, tenantId: string) => {
+    const order = await orderRepository.findOne({ _id: orderId, tenantId });
+    if (!order) throw new Error('Order not found');
+
+    if (order.status !== OrderStatus.IN_TRANSIT) {
+        throw new Error('Order must be in IN_TRANSIT status to be delivered');
+    }
+
+    return await orderRepository.update(orderId, {
+        status: OrderStatus.DELIVERED,
+        deliveryProof: {
+            ...proof,
+            deliveredAt: new Date()
+        }
+    });
+};
+
+export const confirmDelivery = async (orderId: string, tenantId: string) => {
+    const order = await orderRepository.findOne({ _id: orderId, tenantId });
+    if (!order) throw new Error('Order not found');
+
+    if (order.status !== OrderStatus.DELIVERED) {
+        throw new Error('Order must be in DELIVERED status to be confirmed by Warehouse');
+    }
+
+    return await orderRepository.update(orderId, {
+        status: OrderStatus.CLOSED
+    });
 };
 
 export const getDashboardStats = async (tenantId: string) => {
@@ -28,7 +106,7 @@ export const getDashboardStats = async (tenantId: string) => {
     // For demonstration, these are simplified. In a real app, you might have specific logic/collections.
     const activeDeliveries = await orderRepository.count({
         tenantId,
-        status: 'SHIPPED'
+        status: OrderStatus.IN_TRANSIT
     });
 
     const lowStockAlerts = 0; // This would normally come from a product check
@@ -71,20 +149,26 @@ export const getDashboardStats = async (tenantId: string) => {
     };
 };
 
-export const getOrderById = async (id: string, tenantId: string) => {
-    const order = await orderRepository.findOne({ _id: id, tenantId });
+export const getOrderById = async (id: string, tenantId?: string) => {
+    const query = tenantId ? { _id: id, tenantId } : { _id: id };
+    const order = await orderRepository.model
+        .findOne(query)
+        .populate('storeId', 'name ownerName phone address')
+        .populate('warehouseId', 'name location')
+        .populate('vehicleId', 'name plateNumber')
+        .populate('items.productId', 'name sku sellingPrice');
     if (!order) throw new Error('Order not found');
     return order;
 };
 
-export const updateOrder = async (id: string, data: any, tenantId: string) => {
-    const order = await orderRepository.findOne({ _id: id, tenantId });
+export const updateOrder = async (id: string, data: any, tenantId?: string) => {
+    const order = await orderRepository.findOne(tenantId ? { _id: id, tenantId } : { _id: id });
     if (!order) throw new Error('Order not found');
     return await orderRepository.update(id, data);
 };
 
-export const deleteOrder = async (id: string, tenantId: string) => {
-    const order = await orderRepository.findOne({ _id: id, tenantId });
+export const deleteOrder = async (id: string, tenantId?: string) => {
+    const order = await orderRepository.findOne(tenantId ? { _id: id, tenantId } : { _id: id });
     if (!order) throw new Error('Order not found');
     return await orderRepository.delete(id);
 };

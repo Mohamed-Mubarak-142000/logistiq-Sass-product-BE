@@ -3,15 +3,21 @@ import { AuthRequest } from '../middlewares/auth';
 import User, { UserRole } from '../models/User';
 import bcrypt from 'bcryptjs';
 import { sendWelcomeEmail } from '../utils/emailService';
+import { createActivityLog } from '../services/activityLogService';
 
 export const createWorker = async (req: AuthRequest, res: Response) => {
     try {
-        const { name, email, role, location, tenantId: bodyTenantId, warehouseId, vehicleId, password = '123456' } = req.body;
+        const { name, email, location, tenantId: bodyTenantId, warehouseId, vehicleId, phone, nationalId, password = '123456' } = req.body;
+        const role = req.body?.role || (req.baseUrl?.includes('/driver') ? UserRole.DRIVER : undefined);
         const currentUserRole = req.user?.role;
         const currentUserTenantId = req.user?.tenantId;
 
         // Role-based visibility and restrictions
         let finalTenantId = currentUserTenantId;
+
+        if (!role) {
+            return res.status(400).json({ success: false, message: 'Role is required' });
+        }
 
         if (currentUserRole === UserRole.SUPER_ADMIN) {
             // Super Admin must provide a tenantId if creating anyone other than another Super Admin (though usually they create Tenants)
@@ -46,7 +52,19 @@ export const createWorker = async (req: AuthRequest, res: Response) => {
             warehouseId,
             vehicleId,
             location,
+            phone,
+            nationalId,
             mustResetPassword: true, // New users must reset password
+        });
+
+        await createActivityLog({
+            action: role === UserRole.DRIVER ? 'DRIVER_CREATED' : 'USER_CREATED',
+            tenantId: finalTenantId?.toString(),
+            actorId: req.user!.userId,
+            actorRole: req.user!.role,
+            entityType: 'User',
+            entityId: worker._id?.toString(),
+            metadata: { name: worker.name, email: worker.email, role: worker.role }
         });
 
         // Send actual email (mocked for now)
@@ -63,6 +81,8 @@ export const createWorker = async (req: AuthRequest, res: Response) => {
                 warehouseId: worker.warehouseId,
                 vehicleId: worker.vehicleId,
                 location: worker.location,
+                phone: worker.phone,
+                nationalId: worker.nationalId,
             },
             message: 'User created successfully and email sent.'
         });
@@ -74,16 +94,30 @@ export const createWorker = async (req: AuthRequest, res: Response) => {
 export const getAllWorkers = async (req: AuthRequest, res: Response) => {
     try {
         const tenantId = req.user?.tenantId;
+        const isSuperAdmin = req.user?.role === UserRole.SUPER_ADMIN;
         const { role } = req.query;
+        const resolvedRole = role || (req.baseUrl?.includes('/driver') ? UserRole.DRIVER : undefined);
         
-        const filter: any = { tenantId };
-        if (role) {
-            filter.role = role;
+        const filter: any = {};
+        if (!isSuperAdmin && tenantId) {
+            filter.tenantId = tenantId;
+        }
+        if (resolvedRole) {
+            filter.role = resolvedRole;
         } else {
             filter.role = { $in: [UserRole.DRIVER, UserRole.WAREHOUSE_MANAGER, UserRole.WAREHOUSE_OWNER, UserRole.SHOP_OWNER, UserRole.SUPERMARKET_OWNER] };
         }
 
-        const workers = await User.find(filter).select('-password');
+        const selectFields = resolvedRole === UserRole.DRIVER
+            ? 'name email role _id warehouseId vehicleId location phone nationalId isActive'
+            : '-password';
+        let query = User.find(filter).select(selectFields);
+        if (resolvedRole === UserRole.DRIVER) {
+            query = query
+                .populate('warehouseId', 'name location')
+                .populate('vehicleId', 'name plateNumber');
+        }
+        const workers = await query;
         res.status(200).json({ success: true, data: workers });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
@@ -93,7 +127,15 @@ export const getAllWorkers = async (req: AuthRequest, res: Response) => {
 export const getWorkerById = async (req: AuthRequest, res: Response) => {
     try {
         const tenantId = req.user?.tenantId;
-        const worker = await User.findOne({ _id: req.params.id, tenantId });
+        const isSuperAdmin = req.user?.role === UserRole.SUPER_ADMIN;
+        const filter = isSuperAdmin ? { _id: req.params.id } : { _id: req.params.id, tenantId };
+        let query = User.findOne(filter);
+        if (req.baseUrl?.includes('/driver')) {
+            query = query
+                .populate('warehouseId', 'name location')
+                .populate('vehicleId', 'name plateNumber');
+        }
+        const worker = await query;
         if (!worker) return res.status(404).json({ success: false, message: 'Worker not found' });
         res.status(200).json({ success: true, data: worker });
     } catch (error: any) {
@@ -104,8 +146,10 @@ export const getWorkerById = async (req: AuthRequest, res: Response) => {
 export const updateWorker = async (req: AuthRequest, res: Response) => {
     try {
         const tenantId = req.user?.tenantId;
+        const isSuperAdmin = req.user?.role === UserRole.SUPER_ADMIN;
+        const filter = isSuperAdmin ? { _id: req.params.id } : { _id: req.params.id, tenantId };
         const worker = await User.findOneAndUpdate(
-            { _id: req.params.id, tenantId },
+            filter,
             req.body,
             { new: true }
         );
@@ -119,7 +163,9 @@ export const updateWorker = async (req: AuthRequest, res: Response) => {
 export const deleteWorker = async (req: AuthRequest, res: Response) => {
     try {
         const tenantId = req.user?.tenantId;
-        const worker = await User.findOneAndDelete({ _id: req.params.id, tenantId });
+        const isSuperAdmin = req.user?.role === UserRole.SUPER_ADMIN;
+        const filter = isSuperAdmin ? { _id: req.params.id } : { _id: req.params.id, tenantId };
+        const worker = await User.findOneAndDelete(filter);
         if (!worker) return res.status(404).json({ success: false, message: 'Worker not found' });
         res.status(200).json({ success: true, message: 'Worker deleted successfully' });
     } catch (error: any) {

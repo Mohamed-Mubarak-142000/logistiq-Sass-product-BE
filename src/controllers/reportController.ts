@@ -1,7 +1,9 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth';
 import Order from '../models/Order';
-import Product from '../models/Product';
+import { UserRole } from '../models/User';
+import mongoose from 'mongoose';
+import { getActivityLogs } from '../services/activityLogService';
 
 export const getReports = async (req: AuthRequest, res: Response) => {
     try {
@@ -15,7 +17,10 @@ export const getReportDetails = async (req: AuthRequest, res: Response) => {
     try {
         const { reportType } = req.params;
         const { period, from, to } = req.query;
-        const tenantId = req.user!.tenantId;
+        const { companyId } = req.query;
+        const isSuperAdmin = req.user!.role === UserRole.SUPER_ADMIN;
+        const tenantId = isSuperAdmin ? (companyId as string | undefined) : req.user!.tenantId;
+        const tenantObjectId = tenantId ? new mongoose.Types.ObjectId(tenantId) : undefined;
 
         let dateFilter: any = {};
         if (from && to) {
@@ -45,7 +50,7 @@ export const getReportDetails = async (req: AuthRequest, res: Response) => {
         switch (reportType) {
             case 'sales':
                 reportData = await Order.aggregate([
-                    { $match: { ...dateFilter, tenantId, status: 'delivered' } },
+                    { $match: { ...dateFilter, ...(tenantObjectId ? { tenantId: tenantObjectId } : {}), status: 'DELIVERED' } },
                     {
                         $group: {
                             _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -56,12 +61,9 @@ export const getReportDetails = async (req: AuthRequest, res: Response) => {
                     { $sort: { "_id": 1 } }
                 ]);
                 break;
-            case 'inventory':
-                reportData = await Product.find({ tenantId }).select('name quantity minQuantity').lean();
-                break;
             case 'customers':
                 reportData = await Order.aggregate([
-                    { $match: { ...dateFilter, tenantId } },
+                    { $match: { ...dateFilter, ...(tenantObjectId ? { tenantId: tenantObjectId } : {}) } },
                     {
                         $group: {
                             _id: "$customerName",
@@ -78,6 +80,27 @@ export const getReportDetails = async (req: AuthRequest, res: Response) => {
         }
 
         res.status(200).json({ success: true, data: reportData });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getActivityReport = async (req: AuthRequest, res: Response) => {
+    try {
+        const { from, to, companyId } = req.query;
+        const isSuperAdmin = req.user!.role === UserRole.SUPER_ADMIN;
+        const tenantId = isSuperAdmin ? (companyId as string | undefined) : req.user!.tenantId;
+        const fromDate = from ? new Date(from as string) : undefined;
+        const toDate = to ? new Date(to as string) : undefined;
+
+        const logs = await getActivityLogs({
+            tenantId,
+            from: fromDate,
+            to: toDate,
+            limit: 10000,
+        });
+
+        res.status(200).json({ success: true, data: logs });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
     }

@@ -16,7 +16,7 @@ const storage = new CloudinaryStorage({
     params: async (req, file) => {
         return {
             folder: 'logistiq/products',
-            allowed_formats: ['jpg', 'png', 'jpeg'],
+            allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
             public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
         };
     },

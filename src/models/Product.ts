@@ -8,9 +8,11 @@ export interface IProduct extends Document {
     purchasePrice: number;
     sellingPrice: number;
     minStockAlert: number;
+    stock: number;
     barcode?: string;
     expiryDate?: Date;
     imageUrl?: string;
+    storeId?: mongoose.Types.ObjectId;
     tenantId: mongoose.Types.ObjectId;
     isActive: boolean;
 }
@@ -24,9 +26,11 @@ const ProductSchema: Schema = new Schema(
         purchasePrice: { type: Number, required: true },
         sellingPrice: { type: Number, required: true },
         minStockAlert: { type: Number, default: 10 },
+        stock: { type: Number, default: 0 },
         barcode: { type: String },
         expiryDate: { type: Date },
         imageUrl: { type: String },
+        storeId: { type: Schema.Types.ObjectId, ref: 'Store' },
         tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
         isActive: { type: Boolean, default: true },
     },
